@@ -89,7 +89,7 @@
           Fork the processes and exit.  The rmiregistry and java
           processes will continue running in the background.
            -->
-          <fork>true</fork>
+          <fork>false</fork>
           <rmiServerClass>ca.trentonadams.maven.plugins.rmi.ExampleServer
           </rmiServerClass>
           <codebase>${basedir}/target/${project.artifactId}-${project.version}.jar</codebase>          

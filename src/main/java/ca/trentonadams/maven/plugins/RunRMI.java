@@ -20,6 +20,7 @@ import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
 import org.codehaus.classworlds.ClassRealm;
 import org.codehaus.classworlds.ClassWorld;
@@ -69,6 +70,7 @@ import java.util.Vector;
  * @inheritByDefault false
  * @requiresDependencyResolution compile
  */
+@SuppressWarnings({"UnusedDeclaration"})
 public class RunRMI extends AbstractMojo
 {
     /**
@@ -115,7 +117,7 @@ public class RunRMI extends AbstractMojo
      * @required
      */
     private int registryPort;
-    
+
     /**
      * Verification method name of remote method to call, expected return
      * string, and bind name
@@ -157,12 +159,13 @@ public class RunRMI extends AbstractMojo
      */
     private String codebase;
 
+    private Log mojoLog;
 
     public void execute() throws MojoExecutionException
     {
-
         initialize();
         startRegistry();
+        // TODO location of java command needs to be configurable, or detectable
         commands.add(
             "/usr/bin/java -server -Djava.rmi.server.ignoreStubClasses=true " +
                 "-Djava.rmi.server.codebase=file:" + codebase + " " +
@@ -170,7 +173,6 @@ public class RunRMI extends AbstractMojo
                 "-cp command.classpath" +
                 rmiServerClass);
         runCommands();
-
     }
 
     /**
@@ -181,22 +183,24 @@ public class RunRMI extends AbstractMojo
      */
     private void initialize() throws MojoExecutionException
     {
-        if ((verify != null) && (verify.length != 3))
+        if (verify != null && verify.length != 3)
         {
-            throw new MojoExecutionException("The \"verify\" parameter is setup " +
-                "incorrectly.  Please specify a Remote interface class name, " +
-                "followed by a method name, followed by an expected string " +
-                "return value.");
+            throw new MojoExecutionException(
+                "The \"verify\" parameter is setup " +
+                    "incorrectly.  Please specify a Remote interface class name, " +
+                    "followed by a method name, followed by an expected string " +
+                    "return value.");
         }
         else if (verify != null && verify.length == 3)
         {
-            getLog().info("verification method: " + verify[0]);
-            getLog().info("verification return value: " + verify[1]);
-            getLog().info("verification bind name: " + verify[2]);
+            mojoLog = getLog();
+            mojoLog.info("verification method: " + verify[0]);
+            mojoLog.info("verification return value: " + verify[1]);
+            mojoLog.info("verification bind name: " + verify[2]);
         }
 
-        getLog().info("registry port: " + registryPort);
-        
+        mojoLog.info("registry port: " + registryPort);
+
         threads = new Vector<CommandThread>();
 
         try
@@ -210,7 +214,48 @@ public class RunRMI extends AbstractMojo
             throw new MojoExecutionException("Error getting classpath: ", e);
         }
 
-        getLog().info("codebase: " + codebase);
+        mojoLog.info("codebase: " + codebase);
+
+        try
+        {
+            // TODO the class is never found, because something is wrong with the classpath.
+            final ClassWorld world = new ClassWorld();
+
+            //use the existing ContextClassLoader in a realm of the classloading space
+            final ClassRealm realm = world.newRealm("plugin.maven.rmi",
+                Thread.currentThread().getContextClassLoader());
+
+            //create another realm for just the jars we have downloaded on-the-fly and make
+            //sure it is in a child-parent relationship with the current ContextClassLoader
+            final ClassRealm rmiRealm = realm.createChildRealm("rmi");
+
+            final List elements = project.getCompileClasspathElements();
+
+            for (final Object element : elements)
+            {
+                mojoLog.debug("element: " + element);
+                rmiRealm.addConstituent(new File((String) element).toURL());
+            }
+
+            //make the child realm the ContextClassLoader
+            Thread.currentThread()
+                .setContextClassLoader(rmiRealm.getClassLoader());
+        }
+        catch (DuplicateRealmException e)
+        {
+            throw new MojoExecutionException("class loading modification " +
+                "failed", e);
+        }
+        catch (DependencyResolutionRequiredException e)
+        {
+            throw new MojoExecutionException("class loading modification " +
+                "failed", e);
+        }
+        catch (MalformedURLException e)
+        {
+            throw new MojoExecutionException("class loading modification " +
+                "failed", e);
+        }
     }
 
     /**
@@ -227,57 +272,68 @@ public class RunRMI extends AbstractMojo
         {
             registry = LocateRegistry.getRegistry(registryPort);
             registry.list();
-            getLog().info("found registry");
+            mojoLog.info("found registry");
         }
         catch (RemoteException e)
         {
-            getLog().warn("rmiregistry does not exist, attempting " +
+            mojoLog.warn("rmiregistry does not exist, attempting " +
                 "to create it...");
-            getLog().debug("exception", e);
+            mojoLog.debug("exception", e);
             registry = null;
         }
 
         if (registry == null)
         {
             if (fork)
-            {   // BEGIN internal rmi registry
-                getLog().info("starting registry programmatically...");
-                try
-                {
+            {   // BEGIN fork rmiregistry command
+                mojoLog.info("forking registry command");
 //                    commands.add("/usr/bin/rmiregistry");
-                    runCommand("/usr/bin/rmiregistry " + registryPort);
-                    getLog().info("waiting 5000ms for registry startup...");
+                // TODO location of rmiregistry command needs to be
+                // configurable or detectable
+                runCommand("/usr/bin/rmiregistry " + registryPort);
+                mojoLog.info("waiting for registry startup, " +
+                    "press Ctrl-C if this takes too long...");
+                boolean registryStarted = false;
+                do
+                {
                     try
                     {
-                        // TODO dynamically check, until it's started, rather than waiting for a full 5 seconds
-                        sleep(5000);
+                        Thread.sleep(100);
+                        registry = LocateRegistry.getRegistry(registryPort);
+                        registry.list();
+                        registryStarted = true;
+                    }
+                    catch (RemoteException e)
+                    {
+                        mojoLog.debug("still waiting for registry " +
+                            "startup, no need to be alarmed: ", e);
                     }
                     catch (InterruptedException e)
                     {
-                        getLog().error(e);
+                        throw new MojoExecutionException("Interrupted " +
+                            "while waiting for registry startup, " +
+                            "exiting...", e);
                     }
-                    registry = LocateRegistry.getRegistry(registryPort);
-
-//                    registry = LocateRegistry.createRegistry(1099);
-                    getLog().info("bindings: " +
-                        Arrays.toString(registry.list()));
+                } while (!registryStarted);
+            }   // END fork rmiregistry command
+            else
+            {   // BEGIN internal rmi registry
+                mojoLog.info("starting internal registry...");
+                try
+                {
+                    registry = LocateRegistry.createRegistry(registryPort);
                 }
                 catch (RemoteException e)
                 {
-                    getLog().error("error creating registry: ", e);
-                    throw new MojoExecutionException(
-                        "error creating registry: ", e);
+                    mojoLog.debug("error creating non-forking internal " +
+                        "registry", e);
                 }
             }   // END internal rmi registry
-            else
-            {   // BEGIN fork rmiregistry command
-                throw new MojoExecutionException("forking is currently required");
-            }   // END fork rmiregistry command
         }
         else
         {
-            getLog().info("registry: " + registry);
-            getLog().info("using existing rmiregistry instance");
+            mojoLog.info("registry: " + registry);
+            mojoLog.info("using existing rmiregistry instance");
         }
     }   // END startRegistry()
 
@@ -293,46 +349,20 @@ public class RunRMI extends AbstractMojo
         {
             if (verify != null && verify.length == 3)
             {
-                getLog().info("waiting 1000 ms for rmi object to start");
+                mojoLog.info("waiting 1000 ms for rmi object to start");
 
-                // TODO the class is never found, because something is wrong with the classpath.
-                final ClassWorld world = new ClassWorld();
-
-                //use the existing ContextClassLoader in a realm of the classloading space
-                final ClassRealm realm = world.newRealm("plugin.maven.rmi",
-                    Thread.currentThread().getContextClassLoader());
-
-                //create another realm for just the jars we have downloaded on-the-fly and make
-                //sure it is in a child-parent relationship with the current ContextClassLoader
-                final ClassRealm rmiRealm = realm.createChildRealm("rmi");
-
-                final List elements = project.getCompileClasspathElements();
-
-                for (final Object element : elements)
-                {
-                    getLog().debug("element: " + element);
-                    rmiRealm.addConstituent(new File((String) element).toURL());
-                }
-
-                //make the child realm the ContextClassLoader
-                Thread.currentThread()
-                    .setContextClassLoader(rmiRealm.getClassLoader());
-
-                // TODO actually check if it's up, rather than waiting for 1000 seconds
-//                sleep(1000);
-                rmiRealm.getClassLoader().loadClass(rmiServerClass);
                 final Remote rmiServer = registry.lookup(verify[2]);
                 final Method method = rmiServer.getClass().getMethod(verify[0]);
                 final String returnValue = (String) method.invoke(rmiServer);
-                getLog().debug("calling rmiServer.getHello(): " + returnValue);
+                mojoLog.debug("calling rmiServer.getHello(): " + returnValue);
                 if (returnValue.equals(verify[1]))
                 {
-                    getLog().info("rmi startup verification successful");
+                    mojoLog.info("rmi startup verification successful");
                 }
             }
             else
             {
-                getLog().warn("\"verify\" configuration not setup, unable to " +
+                mojoLog.warn("\"verify\" configuration not setup, unable to " +
                     "verify successful rmi startup");
             }
         }
@@ -340,11 +370,11 @@ public class RunRMI extends AbstractMojo
         {
             try
             {
-                getLog().info("bindings: " + Arrays.toString(registry.list()));
+                mojoLog.info("bindings: " + Arrays.toString(registry.list()));
             }
             catch (RemoteException e1)
             {
-                getLog().error(e1);
+                mojoLog.error(e1);
             }
             throw new MojoExecutionException(verify[2] + " not bound to the " +
                 "registry", e);
@@ -357,10 +387,6 @@ public class RunRMI extends AbstractMojo
         {
             throw new MojoExecutionException("remote exception: ", e);
         }
-/*        catch (InterruptedException e)
-        {
-            throw new MojoExecutionException("thread sleep interrupted: ", e);
-        }*/
         catch (NoSuchMethodException e)
         {
             throw new MojoExecutionException("method does not exist, your " +
@@ -374,22 +400,6 @@ public class RunRMI extends AbstractMojo
         {
             throw new MojoExecutionException("invocation target exception: ",
                 e);
-        }
-        catch (ClassNotFoundException e)
-        {
-            throw new MojoExecutionException("class not found: ", e);
-        }
-        catch (MalformedURLException e)
-        {
-            e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
-        }
-        catch (DuplicateRealmException e)
-        {
-            e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
-        }
-        catch (DependencyResolutionRequiredException e)
-        {
-            e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
         }
     }   // END verifyRMIServer()
 
@@ -413,16 +423,16 @@ public class RunRMI extends AbstractMojo
             command = command.replaceAll("command.classpath", classpath
                 + File.pathSeparator +
                 extraClasspath + " ");
-            getLog().info("RUNNING COMMAND: " + command);
+            mojoLog.info("RUNNING COMMAND: " + command);
             runCommand(command);
-            getLog().info("sleeping 1000ms");
+            mojoLog.info("sleeping 1000ms");
             try
             {
                 Thread.sleep(1000);
             }
             catch (InterruptedException e)
             {
-                getLog().error(e);
+                mojoLog.error(e);
             }
         }
 
@@ -432,7 +442,7 @@ public class RunRMI extends AbstractMojo
 
         if (fork)
         {
-            getLog().info("forked process(es), exiting");
+            mojoLog.info("forked process(es), exiting");
         }
 
         // Check to make sure the RMI server was bound, and is returning the
@@ -443,7 +453,7 @@ public class RunRMI extends AbstractMojo
         }
         catch (MojoExecutionException e)
         {
-            getLog().error("verifyRMIServer() failed, exiting", e);
+            mojoLog.error("verifyRMIServer() failed, exiting", e);
             killThreads(threads);
             throw e;
         }
@@ -453,7 +463,7 @@ public class RunRMI extends AbstractMojo
             for (int index = 0; index < threads.size();
                  index = threadRemoved ? index : index + 1)
             {   // if thread removed, keep index value
-                getLog().debug("dead:total = " + deadThreads + ":" +
+                mojoLog.debug("dead:total = " + deadThreads + ":" +
                     totalThreads);
                 threadRemoved = false;
                 final CommandThread thread;
@@ -469,13 +479,13 @@ public class RunRMI extends AbstractMojo
 
                 if (!thread.isAlive())
                 {   // if it is not alive, kill the rest.
-                    getLog().debug("thread died : " + thread.getName());
+                    mojoLog.debug("thread died : " + thread.getName());
                     deadThreads++;
                     threads.remove(index);
                     threadRemoved = true;
                     if (thread.hasFailed())
                     {
-                        getLog().warn("One process has failed, let us kill " +
+                        mojoLog.warn("One process has failed, let us kill " +
                             "them all.  All for one and one for all. :P");
                         killThreads(threads);
                         fork = true;
@@ -483,7 +493,7 @@ public class RunRMI extends AbstractMojo
                     }
                 }
             }
-        }   // END while
+        }   // END waiting for threads to die
     }
 
     /**
@@ -497,7 +507,7 @@ public class RunRMI extends AbstractMojo
         {
             thread.dumpProcOutput();
             thread.shutdown();
-            getLog().info("waiting for thread: " + thread.getName());
+            mojoLog.info("waiting for thread: " + thread.getName());
             for (int index = 0; index < 10; index++)
             {
                 try
