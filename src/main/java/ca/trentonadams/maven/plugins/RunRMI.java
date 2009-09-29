@@ -49,18 +49,11 @@ import java.util.Vector;
  * When not using the forking option, press Ctrl-C to end the maven and rmi
  * processes.
  * <p/>
- * TODO : Use maven's run command tool.  I can't remember what dependency has
- * it, but at some point I want to at least try it.
- * <p/>
- * TODO : Verify that the forking mechanism is being used properly.  i.e. What
- * happens to the thread?  Does the thread get killed, leaving the running
- * process to increase it's STDOUT/STDERR buffer size indefinitely, thereby
- * having a memory leak?
- * <p/>
- * TODO : make rmi registry port configurable
- * <p/>
  * TODO : make java.policy configurable.  Is this really needed though, or will
  * it work from classpath?
+ * <p/>
+ * TODO : Call the class's main method using reflection, if not in forking mode.
+ * That way it is guaranteed to end if the JVM ends.
  *
  * @goal rmi
  * @requiresDirectInvocation false
@@ -85,10 +78,24 @@ public class RunRMI extends AbstractMojo
      * remote call to a method that asks the rmi object to end, killing it from
      * the command line, a process management tool, or some other mechanism.
      * <p/>
-     * TODO: If forking, require parameters that tell the system to connect
-     * stdout/stderr to files.
+     * Also note that stdout/stderr go off into la-la land after forking has
+     * completed, and maven has ended.  I presume that what happens after this
+     * is OS specific; but, it may be that eventually, a buffer is filled up,
+     * making the system unstable.
      *
      * @parameter expression="false"
+     * @description THIS IS AN EXPERIMENTAL OPTION Fork the commands, and exit,
+     * leaving them running in the background. Take special note that if you use
+     * this option, the plugin will no longer be responsible for managing the
+     * processes.  If you need to kill them, you will need to do it yourself
+     * through some other mechanism.  That may be a remote call to a method that
+     * asks the rmi object to end, killing it from the command line, a process
+     * management tool, or some other mechanism.
+     * <p/>
+     * Also note that stdout/stderr go off into la-la land after forking has
+     * completed, and maven has ended.  I presume that what happens after this
+     * is OS specific; but, it may be that eventually, a buffer is filled up,
+     * making the system unstable.
      */
     private boolean fork;
 
@@ -113,6 +120,11 @@ public class RunRMI extends AbstractMojo
     private String rmiServerClass;
 
     /**
+     * You may want to specify the registry port.  If, for example, you are
+     * running an rmiregistry locally, on the default port of 1099, you may want
+     * to specify something different here, if you don't want this object to be
+     * bound to the existing registry.
+     *
      * @parameter expression="1099"
      * @required
      */
@@ -152,6 +164,16 @@ public class RunRMI extends AbstractMojo
     private MavenSession session;
 
     /**
+     * The java home to use, may be overridden in the pom, if necessary.
+     * Defaults to system property java.home.
+     *
+     * @parameter expression="${java.home}"
+     * @required
+     * @description defaults to system property java.home
+     */
+    private String javaHome;
+
+    /**
      * rmi codebase
      *
      * @parameter
@@ -161,13 +183,27 @@ public class RunRMI extends AbstractMojo
 
     private Log mojoLog;
 
+    /**
+     * The java command created with a "javaHome" base.
+     */
+    private String javaCommand;
+    /**
+     * The rmiregistry command created with a "javaHome" base.
+     */
+    private String rmiRegistryCommand;
+
+
+    private String verifyMethod;
+    private String verifyReturnValue;
+    private String verifyBindName;
+
     public void execute() throws MojoExecutionException
     {
         initialize();
         startRegistry();
         // TODO location of java command needs to be configurable, or detectable
         commands.add(
-            "/usr/bin/java -server -Djava.rmi.server.ignoreStubClasses=true " +
+            javaCommand + " -server -Djava.rmi.server.ignoreStubClasses=true " +
                 "-Djava.rmi.server.codebase=file:" + codebase + " " +
 /*                "-Djava.security.policy=file:java.policy " +*/
                 "-cp command.classpath" +
@@ -183,6 +219,12 @@ public class RunRMI extends AbstractMojo
      */
     private void initialize() throws MojoExecutionException
     {
+        mojoLog = getLog();
+        mojoLog.info("javaHome: " + javaHome);
+        javaCommand = javaHome + File.separatorChar + "bin" +
+            File.separatorChar + "java";
+        rmiRegistryCommand = javaHome + File.separatorChar + "bin" +
+            File.separatorChar + "rmiregistry";
         if (verify != null && verify.length != 3)
         {
             throw new MojoExecutionException(
@@ -193,10 +235,13 @@ public class RunRMI extends AbstractMojo
         }
         else if (verify != null && verify.length == 3)
         {
-            mojoLog = getLog();
-            mojoLog.info("verification method: " + verify[0]);
-            mojoLog.info("verification return value: " + verify[1]);
-            mojoLog.info("verification bind name: " + verify[2]);
+            verifyMethod = verify[0];
+            verifyReturnValue = verify[1];
+            verifyBindName = verify[2];
+
+            mojoLog.info("verification method: " + verifyMethod);
+            mojoLog.info("verification return value: " + verifyReturnValue);
+            mojoLog.info("verification bind name: " + verifyBindName);
         }
 
         mojoLog.info("registry port: " + registryPort);
@@ -218,7 +263,6 @@ public class RunRMI extends AbstractMojo
 
         try
         {
-            // TODO the class is never found, because something is wrong with the classpath.
             final ClassWorld world = new ClassWorld();
 
             //use the existing ContextClassLoader in a realm of the classloading space
@@ -290,7 +334,7 @@ public class RunRMI extends AbstractMojo
 //                    commands.add("/usr/bin/rmiregistry");
                 // TODO location of rmiregistry command needs to be
                 // configurable or detectable
-                runCommand("/usr/bin/rmiregistry " + registryPort);
+                runCommand(rmiRegistryCommand + " " + registryPort);
                 mojoLog.info("waiting for registry startup, " +
                     "press Ctrl-C if this takes too long...");
                 boolean registryStarted = false;
@@ -347,15 +391,16 @@ public class RunRMI extends AbstractMojo
     {   // BEGIN verifyRMIServer()
         try
         {
-            if (verify != null && verify.length == 3)
+            if (verifyMethod != null)
             {
                 mojoLog.info("waiting 1000 ms for rmi object to start");
 
-                final Remote rmiServer = registry.lookup(verify[2]);
-                final Method method = rmiServer.getClass().getMethod(verify[0]);
+                final Remote rmiServer = registry.lookup(verifyBindName);
+                final Method method =
+                    rmiServer.getClass().getMethod(verifyMethod);
                 final String returnValue = (String) method.invoke(rmiServer);
                 mojoLog.debug("calling rmiServer.getHello(): " + returnValue);
-                if (returnValue.equals(verify[1]))
+                if (returnValue.equals(verifyReturnValue))
                 {
                     mojoLog.info("rmi startup verification successful");
                 }
@@ -363,7 +408,7 @@ public class RunRMI extends AbstractMojo
             else
             {
                 mojoLog.warn("\"verify\" configuration not setup, unable to " +
-                    "verify successful rmi startup");
+                    "verify successful rmi startup, but it may be working");
             }
         }
         catch (NotBoundException e)
@@ -379,27 +424,26 @@ public class RunRMI extends AbstractMojo
             throw new MojoExecutionException(verify[2] + " not bound to the " +
                 "registry", e);
         }
-        catch (AccessException e)
-        {
-            throw new MojoExecutionException("access violation: ", e);
-        }
-        catch (RemoteException e)
-        {
-            throw new MojoExecutionException("remote exception: ", e);
-        }
         catch (NoSuchMethodException e)
         {
             throw new MojoExecutionException("method does not exist, your " +
                 "\"verify\" plugin configuration parameters are incorrect", e);
         }
-        catch (IllegalAccessException e)
+        catch (AccessException e)
         {
-            throw new MojoExecutionException("illegal access: ", e);
+            throw new MojoExecutionException(e.getMessage(), e);
         }
         catch (InvocationTargetException e)
         {
-            throw new MojoExecutionException("invocation target exception: ",
-                e);
+            throw new MojoExecutionException(e.getMessage(), e);
+        }
+        catch (IllegalAccessException e)
+        {
+            throw new MojoExecutionException(e.getMessage(), e);
+        }
+        catch (RemoteException e)
+        {
+            throw new MojoExecutionException(e.getMessage(), e);
         }
     }   // END verifyRMIServer()
 
@@ -525,7 +569,6 @@ public class RunRMI extends AbstractMojo
             }
         }
     }
-
 
     /**
      * Run a specific command in a thread.
