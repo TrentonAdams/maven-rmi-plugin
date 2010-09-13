@@ -111,4 +111,10 @@
       </plugin>
     </plugins>
   </build>
+
+  <scm>
+    <connection>scm:svn:svn+ssh://svn.climbingvine.ca/var/svn/repos/maven-rmi-plugin/trunk</connection>
+    <developerConnection>scm:svn:svn+ssh://svn.climbingvine.ca/var/svn/repos/maven-rmi-plugin/trunk</developerConnection>
+  </scm>
+
 </project>
