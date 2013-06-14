@@ -28,7 +28,6 @@ import org.codehaus.classworlds.DuplicateRealmException;
 import org.codehaus.plexus.util.StringUtils;
 
 import java.io.File;
-import static java.lang.Thread.sleep;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
@@ -41,6 +40,8 @@ import java.rmi.registry.Registry;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Vector;
+
+import static java.lang.Thread.sleep;
 
 /**
  * Goal which runs an rmiregistry (if not already started) and a spawned java
@@ -393,7 +394,8 @@ public class RunRMI extends AbstractMojo
         {
             if (verifyMethod != null)
             {
-                mojoLog.info("waiting 1000 ms for rmi object to start");
+                mojoLog.info("waiting 1000 ms for rmi object (" +
+                    verifyBindName + ") to start");
 
                 final Remote rmiServer = registry.lookup(verifyBindName);
                 final Method method =
