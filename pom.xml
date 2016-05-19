@@ -111,8 +111,8 @@
   </build>
 
   <scm>
-    <connection>scm:svn:svn+ssh://svn.climbingvine.ca/var/svn/repos/maven-rmi-plugin/trunk</connection>
-    <developerConnection>scm:svn:svn+ssh://svn.climbingvine.ca/var/svn/repos/maven-rmi-plugin/trunk</developerConnection>
+    <connection>scm:git:git@github.com:TrentonAdams/maven-rmi-plugin.git</connection>
+    <developerConnection>scm:git:git@github.com:TrentonAdams/maven-rmi-plugin.git</developerConnection>
   </scm>
 
 </project>
