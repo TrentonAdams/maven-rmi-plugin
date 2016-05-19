@@ -96,7 +96,6 @@
       <plugin>
         <groupId>ca.trentonadams.maven.plugins</groupId>
         <artifactId>maven-rmi-plugin</artifactId>
-        <version>0.1.2-SNAPSHOT</version>
         <executions>
           <execution>
             <goals>
