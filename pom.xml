@@ -6,6 +6,12 @@
   <version>0.1.2-SNAPSHOT</version>
   <name>maven-rmi-plugin Maven Mojo</name>
   <url>http://maven.apache.org</url>
+
+  <scm>
+    <connection>scm:git:git@github.com:TrentonAdams/maven-rmi-plugin.git</connection>
+    <developerConnection>scm:git:git@github.com:TrentonAdams/maven-rmi-plugin.git</developerConnection>
+  </scm>
+
   <dependencies>
     <dependency>
       <groupId>org.apache.maven</groupId>
@@ -39,6 +45,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.1</version>
         <configuration>
           <source>1.5</source>
           <target>1.5</target>
@@ -47,6 +54,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-javadoc-plugin</artifactId>
+        <version>2.7</version>
         <executions>
           <execution>
             <id>attach-javadocs</id>
@@ -61,8 +69,19 @@
         </executions>
       </plugin>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-release-plugin</artifactId>
+        <version>2.5</version>
+        <configuration>
+          <!-- Release profile generates javadoc, sources, etc-->
+          <arguments>-P production,release</arguments>
+          <useReleaseProfile>false</useReleaseProfile>
+        </configuration>
+      </plugin>
+      <plugin>
          <groupId>org.apache.maven.plugins</groupId>
          <artifactId>maven-source-plugin</artifactId>
+        <version>2.1.2</version>
          <executions>
            <execution>
              <id>attach-sources</id>
@@ -75,6 +94,7 @@
       <plugin>
         <groupId>ca.trentonadams.maven.plugins</groupId>
         <artifactId>maven-rmi-plugin</artifactId>
+        <version>0.1.2-SNAPSHOT</version>
         <executions>
           <execution>
             <goals>
@@ -109,10 +129,4 @@
       </plugin>
     </plugins>
   </build>
-
-  <scm>
-    <connection>scm:git:git@github.com:TrentonAdams/maven-rmi-plugin.git</connection>
-    <developerConnection>scm:git:git@github.com:TrentonAdams/maven-rmi-plugin.git</developerConnection>
-  </scm>
-
 </project>
