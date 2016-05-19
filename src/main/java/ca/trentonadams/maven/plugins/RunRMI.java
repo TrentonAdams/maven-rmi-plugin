@@ -392,6 +392,9 @@ public class RunRMI extends AbstractMojo
     {   // BEGIN verifyRMIServer()
         try
         {
+/*            mojoLog.warn("Work around issue with objects not being bound " +
+                "(sleep 2000ms)...");
+            Thread.sleep(2000);*/
             if (verifyMethod != null)
             {
                 mojoLog.info("waiting 1000 ms for rmi object (" +
@@ -471,10 +474,10 @@ public class RunRMI extends AbstractMojo
                 extraClasspath + " ");
             mojoLog.info("RUNNING COMMAND: " + command);
             runCommand(command);
-            mojoLog.info("sleeping 1000ms");
+            mojoLog.info("sleeping 2000ms");
             try
             {
-                Thread.sleep(1000);
+                Thread.sleep(2000);
             }
             catch (InterruptedException e)
             {
