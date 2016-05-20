@@ -2,3 +2,11 @@
 The maven RMI plugin allows for running an RMI instance within a maven build.  Once ran, it will sit there until you press ctrl-c to break out of it.
 
 Examples of configuration are in the pom.xml
+
+Run the following...
+mvn install
+
+Modify your ~/.m2/settings.xml to allow plugins within the group...
+  <pluginGroups>
+    <pluginGroup>ca.trentonadams.maven.plugins</pluginGroup>
+  </pluginGroups>
