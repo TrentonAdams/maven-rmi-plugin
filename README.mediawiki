@@ -1,0 +1,4 @@
+== maven-rmi-plugin ==
+The maven RMI plugin allows for running an RMI instance within a maven build.  Once ran, it will sit there until you press ctrl-c to break out of it.
+
+Examples of configuration are in the pom.xml
