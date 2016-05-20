@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>ca.trentonadams.maven.plugins</groupId>
-  <artifactId>maven-rmi-plugin</artifactId>
+  <artifactId>rmi-maven-plugin</artifactId>
   <version>0.1.3-SNAPSHOT</version>
   <packaging>maven-plugin</packaging>
-  <name>maven-rmi-plugin Maven Mojo</name>
+  <name>rmi-maven-plugin Maven Mojo</name>
   <url>http://maven.apache.org</url>
 
   <scm>
@@ -82,53 +84,66 @@
         </configuration>
       </plugin>
       <plugin>
-         <groupId>org.apache.maven.plugins</groupId>
-         <artifactId>maven-source-plugin</artifactId>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
         <version>2.1.2</version>
-         <executions>
-           <execution>
-             <id>attach-sources</id>
-             <goals>
-               <goal>jar</goal>
-             </goals>
-           </execution>
-         </executions>
-      </plugin>
-      <plugin>
-        <groupId>ca.trentonadams.maven.plugins</groupId>
-        <artifactId>maven-rmi-plugin</artifactId>
         <executions>
           <execution>
+            <id>attach-sources</id>
             <goals>
-              <goal>rmi</goal>
+              <goal>jar</goal>
             </goals>
           </execution>
         </executions>
-        <configuration>
-          <!--
-          Fork the processes and exit.  The rmiregistry and java
-          processes will continue running in the background.
-           -->
-          <fork>false</fork>
-          <rmiServerClass>ca.trentonadams.maven.plugins.rmi.ExampleServer
-          </rmiServerClass>
-          <codebase>${basedir}/target/${project.artifactId}-${project.version}.jar</codebase>          
-          <!--
-          Provide extra runtime class path options for running the java rmi
-          process
-          -->
-          <!--<extraClasspath>${basedir}/target/resources_somewhere</extraClasspath>-->
-          <verify>
-            <!-- method to call for rmi startup verification -->
-            <param>getHello</param>
-            <!-- Expected "String" return value from method -->
-            <param>Hello World!!!</param>
-            <!-- bind name of your rmi server -->
-            <param>testrmi</param>
-          </verify>
-          <registryPort>1199</registryPort>
-        </configuration>
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>test</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>ca.trentonadams.maven.plugins</groupId>
+            <artifactId>rmi-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>rmi</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <!--
+              Fork the processes and exit.  The rmiregistry and java
+              processes will continue running in the background.
+               -->
+              <fork>false</fork>
+              <rmiServerClass>ca.trentonadams.maven.plugins.rmi.ExampleServer
+              </rmiServerClass>
+              <codebase>
+                ${basedir}/target/${project.artifactId}-${project.version}.jar
+              </codebase>
+              <!--
+              Provide extra runtime class path options for running the java rmi
+              process
+              -->
+              <!--<extraClasspath>${basedir}/target/resources_somewhere</extraClasspath>-->
+              <verify>
+                <!-- method to call for rmi startup verification -->
+                <param>getHello</param>
+                <!-- Expected "String" return value from method -->
+                <param>Hello World!!!</param>
+                <!-- bind name of your rmi server -->
+                <param>testrmi</param>
+              </verify>
+              <registryPort>1199</registryPort>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
 </project>
