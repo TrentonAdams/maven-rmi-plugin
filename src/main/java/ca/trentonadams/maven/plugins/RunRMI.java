@@ -37,7 +37,6 @@ import java.rmi.Remote;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Vector;
 
@@ -197,6 +196,12 @@ public class RunRMI extends AbstractMojo
     private String verifyMethod;
     private String verifyReturnValue;
     private String verifyBindName;
+    /**
+     * Defaults to 5000 ms
+     *
+     * @parameter
+     */
+    private long waitTimeMs = 5000;
 
     public void execute() throws MojoExecutionException
     {
@@ -390,25 +395,39 @@ public class RunRMI extends AbstractMojo
      */
     private void verifyRMIServer() throws MojoExecutionException
     {   // BEGIN verifyRMIServer()
-        try
-        {
 /*            mojoLog.warn("Work around issue with objects not being bound " +
                 "(sleep 2000ms)...");
             Thread.sleep(2000);*/
+        try
+        {
             if (verifyMethod != null)
             {
-                mojoLog.info("waiting 1000 ms for rmi object (" +
-                    verifyBindName + ") to start");
+                long beginMs = System.currentTimeMillis();
+                mojoLog.info("calling rmiServer." + verifyMethod +
+                    " and waiting up to " + waitTimeMs + "ms ");
 
-                final Remote rmiServer = registry.lookup(verifyBindName);
-                final Method method =
-                    rmiServer.getClass().getMethod(verifyMethod);
-                final String returnValue = (String) method.invoke(rmiServer);
-                mojoLog.debug("calling rmiServer.getHello(): " + returnValue);
-                if (returnValue.equals(verifyReturnValue))
+                do
                 {
-                    mojoLog.info("rmi startup verification successful");
-                }
+                    try
+                    {
+                        final Remote rmiServer = registry.lookup(verifyBindName);
+                        final Method method = rmiServer.getClass().getMethod(
+                            verifyMethod);
+                        final String returnValue = (String) method.invoke(
+                            rmiServer);
+                        if (returnValue.equals(verifyReturnValue))
+                        {
+                            mojoLog.info("rmi startup verification successful");
+                        }
+                        return;
+                    }
+                    catch (NotBoundException e)
+                    {
+                        Thread.sleep(1000);
+                    }
+                } while (System.currentTimeMillis() - beginMs <= waitTimeMs);
+                mojoLog.error("rmi startup failed.  waitTimeMs not set " +
+                    "high enough?");
             }
             else
             {
@@ -416,25 +435,16 @@ public class RunRMI extends AbstractMojo
                     "verify successful rmi startup, but it may be working");
             }
         }
-        catch (NotBoundException e)
-        {
-            try
-            {
-                mojoLog.info("bindings: " + Arrays.toString(registry.list()));
-            }
-            catch (RemoteException e1)
-            {
-                mojoLog.error(e1);
-            }
-            throw new MojoExecutionException(verify[2] + " not bound to the " +
-                "registry", e);
-        }
         catch (NoSuchMethodException e)
         {
             throw new MojoExecutionException("method does not exist, your " +
                 "\"verify\" plugin configuration parameters are incorrect", e);
         }
         catch (AccessException e)
+        {
+            throw new MojoExecutionException(e.getMessage(), e);
+        }
+        catch (InterruptedException e)
         {
             throw new MojoExecutionException(e.getMessage(), e);
         }
@@ -474,15 +484,6 @@ public class RunRMI extends AbstractMojo
                 extraClasspath + " ");
             mojoLog.info("RUNNING COMMAND: " + command);
             runCommand(command);
-            mojoLog.info("sleeping 2000ms");
-            try
-            {
-                Thread.sleep(2000);
-            }
-            catch (InterruptedException e)
-            {
-                mojoLog.error(e);
-            }
         }
 
         int deadThreads = 0;
