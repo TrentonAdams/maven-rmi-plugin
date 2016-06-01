@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>ca.trentonadams.maven.plugins</groupId>
   <artifactId>rmi-maven-plugin</artifactId>
-  <version>0.1.5-SNAPSHOT</version>
+  <version>0.1.5</version>
   <packaging>maven-plugin</packaging>
   <name>rmi-maven-plugin Maven Mojo</name>
   <url>http://maven.apache.org</url>
@@ -11,7 +11,7 @@
   <scm>
     <connection>scm:git:git@github.com:TrentonAdams/maven-rmi-plugin.git</connection>
     <developerConnection>scm:git:git@github.com:TrentonAdams/maven-rmi-plugin.git</developerConnection>
-    <tag>HEAD</tag>
+    <tag>rmi-maven-plugin-0.1.5</tag>
   </scm>
 
   <dependencies>
